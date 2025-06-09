@@ -1,90 +1,66 @@
-import pandas as pd
-from typing import Dict, List, Any, Optional
-import logging
-import re
+from sqlalchemy import create_engine, MetaData
+from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.pool import QueuePool
+from .settings import settings
 
-logger = logging.getLogger(__name__)
+try:
+    from supabase import create_client, Client
+
+    SUPABASE_AVAILABLE = True
+except ImportError:
+    SUPABASE_AVAILABLE = False
 
 
-class DataValidator:
-    def __init__(self, validation_rules: Optional[Dict[str, Any]] = None):
-        self.validation_rules = validation_rules or {}
-        self.errors = []
+class DatabaseManager:
+    def __init__(self):
+        self.engine = None
+        self.SessionLocal = None
+        self.Base = declarative_base()
+        self.supabase_client = None
+        self._setup_engine()
+        self._setup_supabase()
 
-    def clean_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Clean and standardize dataframe"""
-        # Create copy to avoid modifying original
-        df_clean = df.copy()
+    def _setup_engine(self):
+        """Create optimized database engine"""
+        if settings.DB_TYPE == "postgresql":
+            url = f"postgresql://{settings.DB_USER}:{settings.DB_PASSWORD}@{settings.DB_HOST}:{settings.DB_PORT}/{settings.DB_NAME}"
+        elif settings.DB_TYPE == "mysql":
+            url = f"mysql+pymysql://{settings.DB_USER}:{settings.DB_PASSWORD}@{settings.DB_HOST}:{settings.DB_PORT}/{settings.DB_NAME}"
 
-        # Clean column names
-        df_clean.columns = [self._clean_column_name(col) for col in df_clean.columns]
+        self.engine = create_engine(
+            url,
+            poolclass=QueuePool,
+            pool_size=10,
+            max_overflow=20,
+            pool_pre_ping=True,
+            echo=False,
+        )
 
-        # Remove completely empty rows
-        df_clean = df_clean.dropna(how="all")
+        self.SessionLocal = sessionmaker(
+            autocommit=False, autoflush=False, bind=self.engine
+        )
 
-        # Clean string columns
-        for col in df_clean.select_dtypes(include=["object"]).columns:
-            df_clean[col] = df_clean[col].astype(str).str.strip()
-            df_clean[col] = df_clean[col].replace("nan", "")
-
-        return df_clean
-
-    def _clean_column_name(self, col_name: str) -> str:
-        """Clean column name for database compatibility"""
-        # Convert to lowercase and replace spaces/special chars with underscore
-        clean_name = re.sub(r"[^a-zA-Z0-9_]", "_", str(col_name).lower())
-        clean_name = re.sub(r"_+", "_", clean_name)  # Remove multiple underscores
-        clean_name = clean_name.strip("_")  # Remove leading/trailing underscores
-
-        return clean_name
-
-    def validate_data_types(
-        self, df: pd.DataFrame, type_mapping: Dict[str, str]
-    ) -> pd.DataFrame:
-        """Validate and convert data types"""
-        df_typed = df.copy()
-
-        for column, target_type in type_mapping.items():
-            if column not in df_typed.columns:
-                continue
-
+    def _setup_supabase(self):
+        """Setup Supabase client if available"""
+        if SUPABASE_AVAILABLE and hasattr(settings, "SUPABASE_URL"):
             try:
-                if target_type == "integer":
-                    df_typed[column] = (
-                        pd.to_numeric(df_typed[column], errors="coerce")
-                        .fillna(0)
-                        .astype(int)
-                    )
-                elif target_type == "float":
-                    df_typed[column] = pd.to_numeric(
-                        df_typed[column], errors="coerce"
-                    ).fillna(0.0)
-                elif target_type == "datetime":
-                    df_typed[column] = pd.to_datetime(df_typed[column], errors="coerce")
-                elif target_type == "boolean":
-                    df_typed[column] = (
-                        df_typed[column]
-                        .astype(str)
-                        .str.lower()
-                        .isin(["true", "1", "yes", "y"])
-                    )
-
-            except Exception as e:
-                logger.warning(f"Type conversion failed for column {column}: {e}")
-
-        return df_typed
-
-    def validate_required_fields(
-        self, df: pd.DataFrame, required_fields: List[str]
-    ) -> List[int]:
-        """Validate required fields and return invalid row indices"""
-        invalid_rows = []
-
-        for field in required_fields:
-            if field in df.columns:
-                null_mask = (
-                    df[field].isnull() | (df[field] == "") | (df[field] == "nan")
+                self.supabase_client = create_client(
+                    settings.SUPABASE_URL, settings.SUPABASE_KEY
                 )
-                invalid_rows.extend(df[null_mask].index.tolist())
+            except Exception as e:
+                print(f"Warning: Supabase setup failed: {e}")
 
-        return list(set(invalid_rows))  # Remove duplicates
+    def get_session(self):
+        """Get database session"""
+        return self.SessionLocal()
+
+    def create_tables(self):
+        """Create all tables"""
+        self.Base.metadata.create_all(bind=self.engine)
+
+    def is_supabase_ready(self) -> bool:
+        """Check if Supabase is configured and ready"""
+        return self.supabase_client is not None
+
+
+db_manager = DatabaseManager()
