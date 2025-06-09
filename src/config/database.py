@@ -1,66 +1,43 @@
-from sqlalchemy import create_engine, MetaData
-from sqlalchemy.orm import sessionmaker, declarative_base
-from sqlalchemy.pool import QueuePool
-from .settings import settings
+import pandas as pd
+import logging
 
-try:
-    from supabase import create_client, Client
-
-    SUPABASE_AVAILABLE = True
-except ImportError:
-    SUPABASE_AVAILABLE = False
+logger = logging.getLogger(__name__)
 
 
-class DatabaseManager:
-    def __init__(self):
-        self.engine = None
-        self.SessionLocal = None
-        self.Base = declarative_base()
-        self.supabase_client = None
-        self._setup_engine()
-        self._setup_supabase()
+class DatabaseWriter:
+    def __init__(self, table_name: str):
+        self.table_name = table_name
+        # Late import to avoid circular dependency
+        from ..config.database import db_manager
 
-    def _setup_engine(self):
-        """Create optimized database engine"""
-        if settings.DB_TYPE == "postgresql":
-            url = f"postgresql://{settings.DB_USER}:{settings.DB_PASSWORD}@{settings.DB_HOST}:{settings.DB_PORT}/{settings.DB_NAME}"
-        elif settings.DB_TYPE == "mysql":
-            url = f"mysql+pymysql://{settings.DB_USER}:{settings.DB_PASSWORD}@{settings.DB_HOST}:{settings.DB_PORT}/{settings.DB_NAME}"
+        self.engine = db_manager.engine
 
-        self.engine = create_engine(
-            url,
-            poolclass=QueuePool,
-            pool_size=10,
-            max_overflow=20,
-            pool_pre_ping=True,
-            echo=False,
-        )
+    def create_table_from_dataframe(self, df_sample, **kwargs):
+        """Simple table creation using pandas"""
+        try:
+            df_sample.head(0).to_sql(
+                self.table_name, self.engine, if_exists="replace", index=False
+            )
+            logger.info(f"Table '{self.table_name}' created")
+        except Exception as e:
+            logger.error(f"Table creation failed: {e}")
+            raise
 
-        self.SessionLocal = sessionmaker(
-            autocommit=False, autoflush=False, bind=self.engine
-        )
-
-    def _setup_supabase(self):
-        """Setup Supabase client if available"""
-        if SUPABASE_AVAILABLE and hasattr(settings, "SUPABASE_URL"):
-            try:
-                self.supabase_client = create_client(
-                    settings.SUPABASE_URL, settings.SUPABASE_KEY
+    def parallel_insert(self, dataframes):
+        """Batch insert using pandas"""
+        total = 0
+        try:
+            for df in dataframes:
+                df.to_sql(
+                    self.table_name,
+                    self.engine,
+                    if_exists="append",
+                    index=False,
+                    method="multi",
                 )
-            except Exception as e:
-                print(f"Warning: Supabase setup failed: {e}")
-
-    def get_session(self):
-        """Get database session"""
-        return self.SessionLocal()
-
-    def create_tables(self):
-        """Create all tables"""
-        self.Base.metadata.create_all(bind=self.engine)
-
-    def is_supabase_ready(self) -> bool:
-        """Check if Supabase is configured and ready"""
-        return self.supabase_client is not None
-
-
-db_manager = DatabaseManager()
+                total += len(df)
+                logger.info(f"Inserted {len(df)} rows")
+            return total
+        except Exception as e:
+            logger.error(f"Insert failed: {e}")
+            raise

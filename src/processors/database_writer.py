@@ -1,7 +1,5 @@
-# src/processors/database_writer.py
 import pandas as pd
 from sqlalchemy import (
-    create_engine,
     MetaData,
     Table,
     Column,
@@ -13,7 +11,7 @@ from sqlalchemy import (
 )
 from typing import Dict, Any, List, Optional
 import logging
-from ..config.settings import settings
+from ..config.database import db_manager
 
 logger = logging.getLogger(__name__)
 
@@ -21,58 +19,42 @@ logger = logging.getLogger(__name__)
 class DatabaseWriter:
     def __init__(self, table_name: str):
         self.table_name = table_name
-        self.engine = create_engine(
-            f"postgresql://{settings.DB_USER}:{settings.DB_PASSWORD}@{settings.DB_HOST}:{settings.DB_PORT}/{settings.DB_NAME}"
-        )
+        self.engine = db_manager.engine
         self.metadata = MetaData()
 
     def create_table_from_dataframe(
-        self,
-        df_sample: pd.DataFrame,
-        primary_key: str = "id",
-        type_mapping: Optional[Dict[str, str]] = None,
+        self, df_sample, primary_key="id", type_mapping=None
     ):
-        """Create table from DataFrame structure"""
         columns = [Column(primary_key, Integer, primary_key=True, autoincrement=True)]
 
         for col_name, dtype in df_sample.dtypes.items():
             if col_name == primary_key:
                 continue
-
+            sql_type = String(255)  # Default type
             if type_mapping and col_name in type_mapping:
-                sql_type = self._get_sqlalchemy_type(type_mapping[col_name])
-            else:
-                sql_type = String(255)
-
+                type_map = {
+                    "string": String(255),
+                    "integer": Integer,
+                    "float": Float,
+                    "boolean": Boolean,
+                    "datetime": DateTime,
+                }
+                sql_type = type_map.get(type_mapping[col_name], String(255))
             columns.append(Column(col_name, sql_type))
 
         self.table = Table(self.table_name, self.metadata, *columns)
         self.metadata.create_all(self.engine)
         logger.info(f"Table '{self.table_name}' created")
 
-    def _get_sqlalchemy_type(self, type_name: str):
-        """Convert string type to SQLAlchemy type"""
-        mapping = {
-            "string": String(255),
-            "integer": Integer,
-            "float": Float,
-            "boolean": Boolean,
-            "datetime": DateTime,
-        }
-        return mapping.get(type_name, String(255))
-
-    def parallel_insert(self, dataframes: List[pd.DataFrame]) -> int:
-        """Insert dataframes to database"""
-        total_inserted = 0
-
+    def parallel_insert(self, dataframes):
+        total = 0
         for df in dataframes:
             df.to_sql(
-                name=self.table_name,
-                con=self.engine,
+                self.table_name,
+                self.engine,
                 if_exists="append",
                 index=False,
-                chunksize=settings.BATCH_SIZE,
+                chunksize=1000,
             )
-            total_inserted += len(df)
-
-        return total_inserted
+            total += len(df)
+        return total
