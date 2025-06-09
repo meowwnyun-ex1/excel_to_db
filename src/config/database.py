@@ -1,43 +1,47 @@
-import pandas as pd
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import sessionmaker, declarative_base
+from .settings import settings
 import logging
 
 logger = logging.getLogger(__name__)
 
+class DatabaseManager:
+    def __init__(self):
+        self.engine = None
+        self.SessionLocal = None
+        self.Base = declarative_base()
+        self._setup_engine()
 
-class DatabaseWriter:
-    def __init__(self, table_name: str):
-        self.table_name = table_name
-        # Late import to avoid circular dependency
-        from ..config.database import db_manager
+    def _setup_engine(self):
+        url = settings.get_database_url()
+        
+        self.engine = create_engine(
+            url,
+            pool_size=10,
+            max_overflow=20,
+            pool_pre_ping=True,
+            pool_recycle=3600,
+            echo=False,
+            connect_args={
+                "sslmode": "require",
+                "connect_timeout": 30,
+                "application_name": "excel_to_db_processor"
+            }
+        )
+        
+        self.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)
+        logger.info("✅ Supabase PostgreSQL engine configured")
 
-        self.engine = db_manager.engine
+    def get_session(self):
+        return self.SessionLocal()
 
-    def create_table_from_dataframe(self, df_sample, **kwargs):
-        """Simple table creation using pandas"""
+    def test_connection(self):
         try:
-            df_sample.head(0).to_sql(
-                self.table_name, self.engine, if_exists="replace", index=False
-            )
-            logger.info(f"Table '{self.table_name}' created")
+            with self.engine.connect() as conn:
+                result = conn.execute(text("SELECT 1 as test"))
+                return True
         except Exception as e:
-            logger.error(f"Table creation failed: {e}")
-            raise
+            logger.error(f"Connection failed: {e}")
+            return False
 
-    def parallel_insert(self, dataframes):
-        """Batch insert using pandas"""
-        total = 0
-        try:
-            for df in dataframes:
-                df.to_sql(
-                    self.table_name,
-                    self.engine,
-                    if_exists="append",
-                    index=False,
-                    method="multi",
-                )
-                total += len(df)
-                logger.info(f"Inserted {len(df)} rows")
-            return total
-        except Exception as e:
-            logger.error(f"Insert failed: {e}")
-            raise
+db_manager = DatabaseManager()

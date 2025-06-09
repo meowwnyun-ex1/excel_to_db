@@ -4,7 +4,7 @@ import os
 
 # Direct Supabase connection
 engine = create_engine(
-    "postgresql://postgres:jsCvOpw2RbFdpf5L@db.ydmmxivfmfgbbphmitgy.supabase.co:5432/postgres"
+    "postgres://postgres.ydmmxivfmfgbbphmitgy:jsCvOpw2RbFdpf5L@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres?sslmode=require"
 )
 
 # Read Excel & Import

@@ -2,17 +2,17 @@
 content = """from typing import Optional
 
 class Settings:
-    DB_HOST: str = "db.ydmmxivfmfgbbphmitgy.supabase.co"
-    DB_PORT: int = 5432
-    DB_NAME: str = "postgres"
-    DB_USER: str = "postgres"
-    DB_PASSWORD: str = "jsCvOpw2RbFdpf5L"
-    DB_TYPE: str = "postgresql"
-    BATCH_SIZE: int = 1000
-    MAX_WORKERS: int = 3
-    CHUNK_SIZE: int = 5000
-    LOG_LEVEL: str = "INFO"
-    LOG_FILE: str = "logs/excel_to_db.log"
+    DB_HOST=aws-0-ap-southeast-1.pooler.supabase.com
+    DB_PORT=6543
+    DB_NAME=postgres
+    DB_USER=postgres.ydmmxivfmfgbbphmitgy
+    DB_PASSWORD=jsCvOpw2RbFdpf5L
+    DB_TYPE=postgresql
+    BATCH_SIZE=2000
+    MAX_WORKERS=6
+    CHUNK_SIZE=10000
+    LOG_LEVEL=INFO
+    LOG_FILE=logs/excel_to_db.log
 
 settings = Settings()"""
 

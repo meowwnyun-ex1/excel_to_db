@@ -1,0 +1,18 @@
+2025-06-09 14:50:45,347 - ERROR - Pipeline failed: name 'settings' is not defined
+Traceback (most recent call last):
+  File "D:\GitHub\Project\excel_to_db\file_manager.py", line 343, in run_complete_pipeline
+    for chunk in reader.read_chunks(chunk_size=settings.CHUNK_SIZE):
+                                               ^^^^^^^^
+NameError: name 'settings' is not defined
+2025-06-09 15:36:14,597 - INFO - [SUCCESS] Table 'employees_xlarge_1749458169' created successfully
+2025-06-09 15:36:41,698 - INFO - [SUCCESS] Inserted 10000 rows to PostgreSQL
+2025-06-09 15:36:41,952 - INFO - [SUCCESS] Batch inserted 10000 rows
+2025-06-09 15:36:42,160 - INFO - [SUCCESS] Inserted 10000 rows to PostgreSQL
+2025-06-09 15:36:42,306 - INFO - [SUCCESS] Batch inserted 10000 rows
+2025-06-09 15:36:42,443 - INFO - [SUCCESS] Inserted 10000 rows to PostgreSQL
+2025-06-09 15:36:42,451 - INFO - [SUCCESS] Inserted 10000 rows to PostgreSQL
+2025-06-09 15:36:42,747 - INFO - [SUCCESS] Batch inserted 10000 rows
+2025-06-09 15:36:42,868 - INFO - [SUCCESS] Batch inserted 10000 rows
+2025-06-09 15:36:43,476 - INFO - [SUCCESS] Inserted 10000 rows to PostgreSQL
+2025-06-09 15:36:43,560 - INFO - [SUCCESS] Batch inserted 10000 rows
+2025-06-09 15:36:43,561 - INFO - [COMPLETE] Total inserted: 50000 rows

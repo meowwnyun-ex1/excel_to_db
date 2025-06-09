@@ -10,19 +10,15 @@ def create_env_file():
     """สร้างไฟล์ .env สำหรับ Supabase"""
 
     env_content = """# Database Configuration สำหรับ Supabase
-DB_HOST=db.ydmmxivfmfgbbphmitgy.supabase.co
-DB_PORT=5432
+DB_HOST=aws-0-ap-southeast-1.pooler.supabase.com
+DB_PORT=6543
 DB_NAME=postgres
-DB_USER=postgres
+DB_USER=postgres.ydmmxivfmfgbbphmitgy
 DB_PASSWORD=jsCvOpw2RbFdpf5L
 DB_TYPE=postgresql
-
-# Processing Configuration (Optimized สำหรับ Supabase)
-BATCH_SIZE=1000
-MAX_WORKERS=3
-CHUNK_SIZE=5000
-
-# Logging
+BATCH_SIZE=2000
+MAX_WORKERS=6
+CHUNK_SIZE=10000
 LOG_LEVEL=INFO
 LOG_FILE=logs/excel_to_db.log
 
