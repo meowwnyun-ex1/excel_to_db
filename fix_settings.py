@@ -1,5 +1,5 @@
-from typing import Optional
-
+# fix_settings.py
+content = """from typing import Optional
 
 class Settings:
     DB_HOST: str = "db.ydmmxivfmfgbbphmitgy.supabase.co"
@@ -14,5 +14,9 @@ class Settings:
     LOG_LEVEL: str = "INFO"
     LOG_FILE: str = "logs/excel_to_db.log"
 
+settings = Settings()"""
 
-settings = Settings()
+with open("src/config/settings.py", "w", encoding="utf-8") as f:
+    f.write(content)
+
+print("✅ Fixed settings.py")

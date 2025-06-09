@@ -1,66 +1,71 @@
-from sqlalchemy import create_engine, MetaData
-from sqlalchemy.orm import sessionmaker, declarative_base
-from sqlalchemy.pool import QueuePool
-from .settings import settings
+# src/processors/data_validator.py - เพิ่ม class ที่หาย
+import pandas as pd
+from typing import Dict, List, Any, Optional
+import logging
+import re
 
-try:
-    from supabase import create_client, Client
-
-    SUPABASE_AVAILABLE = True
-except ImportError:
-    SUPABASE_AVAILABLE = False
+logger = logging.getLogger(__name__)
 
 
-class DatabaseManager:
-    def __init__(self):
-        self.engine = None
-        self.SessionLocal = None
-        self.Base = declarative_base()
-        self.supabase_client = None
-        self._setup_engine()
-        self._setup_supabase()
+class DataValidator:
+    def __init__(self, validation_rules: Optional[Dict[str, Any]] = None):
+        self.validation_rules = validation_rules or {}
+        self.errors = []
 
-    def _setup_engine(self):
-        """Create optimized database engine"""
-        if settings.DB_TYPE == "postgresql":
-            url = f"postgresql://{settings.DB_USER}:{settings.DB_PASSWORD}@{settings.DB_HOST}:{settings.DB_PORT}/{settings.DB_NAME}"
-        elif settings.DB_TYPE == "mysql":
-            url = f"mysql+pymysql://{settings.DB_USER}:{settings.DB_PASSWORD}@{settings.DB_HOST}:{settings.DB_PORT}/{settings.DB_NAME}"
+    def clean_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Clean and standardize dataframe"""
+        df_clean = df.copy()
 
-        self.engine = create_engine(
-            url,
-            poolclass=QueuePool,
-            pool_size=10,
-            max_overflow=20,
-            pool_pre_ping=True,
-            echo=False,
-        )
+        # Clean column names
+        df_clean.columns = [self._clean_column_name(col) for col in df_clean.columns]
 
-        self.SessionLocal = sessionmaker(
-            autocommit=False, autoflush=False, bind=self.engine
-        )
+        # Remove empty rows
+        df_clean = df_clean.dropna(how="all")
 
-    def _setup_supabase(self):
-        """Setup Supabase client if available"""
-        if SUPABASE_AVAILABLE and hasattr(settings, "SUPABASE_URL"):
+        # Clean string columns
+        for col in df_clean.select_dtypes(include=["object"]).columns:
+            df_clean[col] = df_clean[col].astype(str).str.strip()
+            df_clean[col] = df_clean[col].replace("nan", "")
+
+        return df_clean
+
+    def _clean_column_name(self, col_name: str) -> str:
+        """Clean column name for database compatibility"""
+        clean_name = re.sub(r"[^a-zA-Z0-9_]", "_", str(col_name).lower())
+        clean_name = re.sub(r"_+", "_", clean_name).strip("_")
+        return clean_name
+
+    def validate_data_types(
+        self, df: pd.DataFrame, type_mapping: Dict[str, str]
+    ) -> pd.DataFrame:
+        """Validate and convert data types"""
+        df_typed = df.copy()
+
+        for column, target_type in type_mapping.items():
+            if column not in df_typed.columns:
+                continue
+
             try:
-                self.supabase_client = create_client(
-                    settings.SUPABASE_URL, settings.SUPABASE_KEY
-                )
+                if target_type == "integer":
+                    df_typed[column] = (
+                        pd.to_numeric(df_typed[column], errors="coerce")
+                        .fillna(0)
+                        .astype(int)
+                    )
+                elif target_type == "float":
+                    df_typed[column] = pd.to_numeric(
+                        df_typed[column], errors="coerce"
+                    ).fillna(0.0)
+                elif target_type == "datetime":
+                    df_typed[column] = pd.to_datetime(df_typed[column], errors="coerce")
+                elif target_type == "boolean":
+                    df_typed[column] = (
+                        df_typed[column]
+                        .astype(str)
+                        .str.lower()
+                        .isin(["true", "1", "yes", "y"])
+                    )
             except Exception as e:
-                print(f"Warning: Supabase setup failed: {e}")
+                logger.warning(f"Type conversion failed for column {column}: {e}")
 
-    def get_session(self):
-        """Get database session"""
-        return self.SessionLocal()
-
-    def create_tables(self):
-        """Create all tables"""
-        self.Base.metadata.create_all(bind=self.engine)
-
-    def is_supabase_ready(self) -> bool:
-        """Check if Supabase is configured and ready"""
-        return self.supabase_client is not None
-
-
-db_manager = DatabaseManager()
+        return df_typed

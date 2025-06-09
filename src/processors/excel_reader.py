@@ -1,7 +1,9 @@
+# src/processors/excel_reader.py - Fixed version
 import pandas as pd
 from typing import Iterator, Dict, Any, Optional
 from pathlib import Path
 import logging
+import math
 
 logger = logging.getLogger(__name__)
 
@@ -16,10 +18,8 @@ class ExcelReader:
         """Validate Excel file"""
         if not self.file_path.exists():
             raise FileNotFoundError(f"File not found: {self.file_path}")
-
-        if not self.file_path.suffix.lower() in [".xlsx", ".xls"]:
+        if self.file_path.suffix.lower() not in [".xlsx", ".xls"]:
             raise ValueError("File must be Excel format (.xlsx or .xls)")
-
         return True
 
     def get_sheet_info(self) -> Dict[str, Any]:
@@ -28,9 +28,9 @@ class ExcelReader:
 
         with pd.ExcelFile(self.file_path) as excel_file:
             sheets = excel_file.sheet_names
-
-            # Get row count for first sheet or specified sheet
             target_sheet = self.sheet_name or sheets[0]
+
+            # Get columns
             df_sample = pd.read_excel(excel_file, sheet_name=target_sheet, nrows=0)
 
             # Count total rows
@@ -45,22 +45,49 @@ class ExcelReader:
             }
 
     def read_chunks(self, chunk_size: int = 1000) -> Iterator[pd.DataFrame]:
-        """Read Excel file in chunks"""
+        """Read Excel file in chunks (manual implementation)"""
         self.validate_file()
 
         try:
             target_sheet = self.sheet_name or 0
 
-            # Read in chunks
-            for chunk in pd.read_excel(
-                self.file_path,
-                sheet_name=target_sheet,
-                chunksize=chunk_size,
-                dtype=str,  # Read as string first to avoid type issues
-                na_filter=False,
-            ):
-                yield chunk
+            # Get total rows first
+            if self.total_rows == 0:
+                self.get_sheet_info()
+
+            # Manual chunking - read skiprows/nrows
+            for start_row in range(0, self.total_rows, chunk_size):
+                if start_row == 0:
+                    # First chunk - include headers
+                    chunk = pd.read_excel(
+                        self.file_path,
+                        sheet_name=target_sheet,
+                        skiprows=0,
+                        nrows=chunk_size,
+                        dtype=str,
+                        na_filter=False,
+                    )
+                else:
+                    # Skip headers for subsequent chunks
+                    chunk = pd.read_excel(
+                        self.file_path,
+                        sheet_name=target_sheet,
+                        skiprows=start_row + 1,  # +1 to skip header
+                        nrows=chunk_size,
+                        header=None,  # No header in subsequent chunks
+                        dtype=str,
+                        na_filter=False,
+                    )
+
+                    # Get column names from first chunk
+                    first_chunk = pd.read_excel(
+                        self.file_path, sheet_name=target_sheet, nrows=0
+                    )
+                    chunk.columns = first_chunk.columns
+
+                if not chunk.empty:
+                    yield chunk
 
         except Exception as e:
-            logger.error(f"Error reading Excel file: {e}")
+            logger.error(f"Error reading Excel file {self.file_path}: {e}")
             raise
